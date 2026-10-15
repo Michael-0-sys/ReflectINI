@@ -1,0 +1,57 @@
+#######################################
+# Syntax Coloring Map For ReflectINI
+#######################################
+
+# Datatypes (KEYWORD1)
+INIwriter	KEYWORD1
+INIreader	KEYWORD1
+IniConfig	KEYWORD1
+IniWriterStatus	KEYWORD1
+IniReaderStatus	KEYWORD1
+JsonFixed	KEYWORD1
+JsonNumber	KEYWORD1
+
+# Methods and functions (KEYWORD2)
+write	KEYWORD2
+startSection	KEYWORD2
+comment	KEYWORD2
+blankLine	KEYWORD2
+resetINI	KEYWORD2
+getINI	KEYWORD2
+getINISize	KEYWORD2
+getKeyCount	KEYWORD2
+getMaxKeys	KEYWORD2
+getBufferSize	KEYWORD2
+parse	KEYWORD2
+read	KEYWORD2
+hasError	KEYWORD2
+hasReadError	KEYWORD2
+hasParseError	KEYWORD2
+isINIParsed	KEYWORD2
+getErrorCode	KEYWORD2
+getErrorMsg	KEYWORD2
+getErrorPath	KEYWORD2
+getErrorLine	KEYWORD2
+getErrorColumn	KEYWORD2
+setConfig	KEYWORD2
+getConfig	KEYWORD2
+strict	KEYWORD2
+setBufferCheck	KEYWORD2
+isBufferCheckEnabled	KEYWORD2
+setCreateErrorInfo	KEYWORD2
+isCreateErrorInfoEnabled	KEYWORD2
+getEntryCount	KEYWORD2
+getSectionCount	KEYWORD2
+getMaxEntries	KEYWORD2
+getMaxSections	KEYWORD2
+fn	KEYWORD2
+fx	KEYWORD2
+
+# Constants and macros (LITERAL1)
+REFLECT	LITERAL1
+MEMBER	LITERAL1
+MEMBER_AS	LITERAL1
+INI_MAX_KEY_LEN	LITERAL1
+INI_MAX_SECTION_LEN	LITERAL1
+INI_MAX_STRING_LEN	LITERAL1
+INI_MAX_LEN	LITERAL1
