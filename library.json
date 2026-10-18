@@ -1,6 +1,6 @@
 {
   "name": "ReflectINI",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "INI writer and reader for microcontrollers with struct reflection, sections, arrays and precise error locations (C++17).",
   "keywords": "ini, config, configuration, reflection, serialization, parser, writer, struct, embedded",
   "repository": {
