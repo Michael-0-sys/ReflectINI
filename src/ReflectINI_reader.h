@@ -615,41 +615,46 @@ private:
 
     template<typename FR>
     bool readField(FR &f, const int16_t secId){
-      using M = remove_cvref_t<decltype(f.value)>;
-
-      if constexpr (isIniSection<M>()){
-        const uint8_t old = _secLen;
-        if constexpr (std::is_array_v<M>){
-          constexpr size_t N = std::extent_v<M>;
-          for(size_t i = 0; i < N; i++){
-            if(!pushName(f.key, f.keyLen, f.key) || !pushIndex(unsigned(i), f.key)) return false;
-            const bool ok = readStruct(f.value[i], findSection(_sec, _secLen));
-            popName(old);
-            if(!ok) return false;
-          }
-          return true;
-        }else{
-          if(!pushName(f.key, f.keyLen, f.key)) return false;
-          const bool ok = readStruct(f.value, findSection(_sec, _secLen));
-          popName(old);
-          return ok;
-        }
+      if constexpr (is_reflect_comment_v<FR>){
+        (void)f; (void)secId;
+        return true;                    // COMMENT(...) is only written, never read
       }else{
-        const int16_t e = secId >= 0 ? findEntry(uint8_t(secId), f.key, f.keyLen) : -1;
-        if(e < 0){
-          // missing key: the member keeps its default
-          if(!_config.requireAllKeys) return true;
-          // requireAllKeys: a missing nullable member (std::optional, const char*, char*) means "null".
-          // INIwriter omits exactly these values (empty optional / nullptr), so strict writer -> strict reader roundtrips.
-          if constexpr (isIniNullable<M>()){
-            iniSetNull(f.value);
+        using M = remove_cvref_t<decltype(f.value)>;
+
+        if constexpr (isIniSection<M>()){
+          const uint8_t old = _secLen;
+          if constexpr (std::is_array_v<M>){
+            constexpr size_t N = std::extent_v<M>;
+            for(size_t i = 0; i < N; i++){
+              if(!pushName(f.key, f.keyLen, f.key) || !pushIndex(unsigned(i), f.key)) return false;
+              const bool ok = readStruct(f.value[i], findSection(_sec, _secLen));
+              popName(old);
+              if(!ok) return false;
+            }
             return true;
+          }else{
+            if(!pushName(f.key, f.keyLen, f.key)) return false;
+            const bool ok = readStruct(f.value, findSection(_sec, _secLen));
+            popName(old);
+            return ok;
           }
-          return fail(IniReaderStatus::INI_ERR_KEY_MISSING, secId >= 0 ? _sections[secId].line : 0, _sec, _secLen,
-                      f.key, f.keyLen, -1, "missing key (expected %s)", iniTypeName<M>());
+        }else{
+          const int16_t e = secId >= 0 ? findEntry(uint8_t(secId), f.key, f.keyLen) : -1;
+          if(e < 0){
+            // missing key: the member keeps its default
+            if(!_config.requireAllKeys) return true;
+            // requireAllKeys: a missing nullable member (std::optional, const char*, char*) means "null".
+            // INIwriter omits exactly these values (empty optional / nullptr), so strict writer -> strict reader roundtrips.
+            if constexpr (isIniNullable<M>()){
+              iniSetNull(f.value);
+              return true;
+            }
+            return fail(IniReaderStatus::INI_ERR_KEY_MISSING, secId >= 0 ? _sections[secId].line : 0, _sec, _secLen,
+                        f.key, f.keyLen, -1, "missing key (expected %s)", iniTypeName<M>());
+          }
+          _entries[e].flags |= FLAG_USED;
+          return readValue(f.value, e, f.key);
         }
-        _entries[e].flags |= FLAG_USED;
-        return readValue(f.value, e, f.key);
       }
     }
 

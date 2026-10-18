@@ -11,7 +11,7 @@
 // The same file ships with ReflectJSON: a struct with REFLECT(...) works with JSONreader/JSONwriter AND
 // INIreader/INIwriter. ReflectINI itself does not need ReflectJSON.
 #include "ReflectCore.h"
-#if !defined(REFLECTCORE_VERSION) || REFLECTCORE_VERSION != 5
+#if !defined(REFLECTCORE_VERSION) || REFLECTCORE_VERSION != 6
   #error "ReflectCore.h version mismatch: ReflectJSON and ReflectINI must ship the same ReflectCore.h"
 #endif
 

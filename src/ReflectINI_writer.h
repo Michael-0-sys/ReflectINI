@@ -7,6 +7,7 @@
 
 #pragma once
 #include "ReflectINI_tools.h"
+#include <tuple>
 
 // Error and status codes returned by INIwriter.
 // INI_WRITER_OK (0) indicates successful writing with no errors.
@@ -167,6 +168,7 @@ public:
       _sec[0] = '\0';
       _emittedLen = 0;
       _headerEmitted = false;
+      _commentBeforeHeader = false;
       _pendingKey = nullptr;
       _pendingIdx = -1;
       _code = IniWriterStatus::INI_WRITER_OK;
@@ -258,6 +260,7 @@ private:
     char _emitted[INI_MAX_SECTION_LEN + 1] = {0};  // last [header] written to the text
     uint8_t _emittedLen = 0;
     bool _headerEmitted = false;
+    bool _commentBeforeHeader = false;   // a section COMMENT was written: the next [header] follows directly
 
     IniConfig _config;
     // Key of the value currently being written (only valid during the current write() call).
@@ -313,7 +316,8 @@ private:
       }
       if(_headerEmitted && _emittedLen == _secLen && memcmp(_emitted, _sec, _secLen) == 0) return true;
 
-      if(_pos > 0 && _config.blankLineBeforeSection) appendChar('\n');
+      if(_pos > 0 && _config.blankLineBeforeSection && !_commentBeforeHeader) appendChar('\n');
+      _commentBeforeHeader = false;
       appendChar('[');
       appendRaw(_sec, _secLen);
       appendLit("]\n");
@@ -368,6 +372,7 @@ private:
           const uint8_t old = _secLen;
           for(size_t i = 0; i < N; i++){
             if(!pushName(key, strlen(key)) || !pushIndex(unsigned(i))) return false;
+            if(_commentBeforeHeader && !ensureHeader()) return false;   // COMMENT belongs to [key.0]
             const bool ok = writeStruct(value[i]);
             popName(old);
             if(!ok) return false;
@@ -377,6 +382,7 @@ private:
           if(!key) return writeStruct(value);   // flatten into the current section
           const uint8_t old = _secLen;
           if(!pushName(key, iniBoundedLen(key, INI_MAX_SECTION_LEN))) return false;
+          if(_commentBeforeHeader && !ensureHeader()) return false;     // COMMENT belongs to [key]
           const bool ok = writeStruct(value);
           popName(old);
           return ok;
@@ -414,23 +420,85 @@ private:
     // All scalar members first (they belong to the current section), then the sub-sections.
     // reflect() is called only ONCE: the member expressions of MEMBER(x, expr) / MEMBER_AS(key, expr)
     // are evaluated once per write, the pack is just walked twice.
+    // COMMENT(...) belongs to the next member: it is written in the same pass as that member (pass 1: keys,
+    // pass 2: sections) and only if that member is written (not for an empty std::optional / nullptr).
+    // A COMMENT without a following member belongs to pass 1 and is always written.
     template<typename T>
     bool writeStruct(const T &value){
       bool ok = true;
       value.reflect([&](auto&&... fields){
-        ok = (... && writeField<false>(fields));
-        if(ok) ok = (... && writeField<true>(fields));
+        auto tup = std::forward_as_tuple(fields...);
+        constexpr auto seq = std::make_index_sequence<sizeof...(fields)>{};
+        ok = writePass<false>(tup, seq);
+        if(ok) ok = writePass<true>(tup, seq);
       });
       return ok && !hasError();
     }
-    template<bool Sections, typename FR>
-    FORCE_INLINE bool writeField(const FR &f){
-      using M = remove_cvref_t<decltype(f.value)>;
-      if constexpr (isIniSection<M>() == Sections){
-        return setData(f.value, f.key);
+    template<bool Sections, typename Tup, size_t... I>
+    FORCE_INLINE bool writePass(const Tup &tup, std::index_sequence<I...>){
+      (void)tup;
+      return (true && ... && writeEntry<Sections, I>(tup));
+    }
+    // Index of the first member (not COMMENT) at or after I, or the pack size
+    template<size_t I, typename Tup>
+    static constexpr size_t nextMemberIndex(){
+      if constexpr (I >= std::tuple_size_v<Tup>) return I;
+      else if constexpr (is_reflect_comment_v<std::tuple_element_t<I, Tup>>) return nextMemberIndex<I + 1, Tup>();
+      else return I;
+    }
+    // false if setData() would omit the value (empty std::optional, nullptr string)
+    template<typename V>
+    static bool iniWillWrite(const V &v){
+      if constexpr (is_json_optional_v<V>){
+        return v.has_value() && iniWillWrite(*v);
+      }else if constexpr (!isIniSection<V>() && deduceIniType<V>() == IniTypeKind::String){
+        return v != nullptr;
       }else{
+        (void)v;
         return true;
       }
+    }
+    template<bool Sections, size_t I, typename Tup>
+    FORCE_INLINE bool writeEntry(const Tup &tup){
+      using F = remove_cvref_t<std::tuple_element_t<I, Tup>>;
+      const F &f = std::get<I>(tup);
+      if constexpr (is_reflect_comment_v<F>){
+        constexpr size_t J = nextMemberIndex<I + 1, Tup>();
+        if constexpr (J == std::tuple_size_v<Tup>){
+          // trailing COMMENT: after the last key
+          if constexpr (Sections) return true;
+          else return writeReflectComment(f.text, false);
+        }else{
+          using G = remove_cvref_t<std::tuple_element_t<J, Tup>>;
+          if constexpr (isIniSection<remove_cvref_t<decltype(G::value)>>() != Sections){
+            return true;
+          }else{
+            if(!iniWillWrite(std::get<J>(tup).value)) return true;   // member omitted: comment omitted too
+            return writeReflectComment(f.text, Sections);
+          }
+        }
+      }else{
+        using M = remove_cvref_t<decltype(f.value)>;
+        if constexpr (isIniSection<M>() == Sections){
+          return setData(f.value, f.key);
+        }else{
+          return true;
+        }
+      }
+    }
+    // Key comment: below the [header] of the current section, in front of the key.
+    // Section comment: blank line (blankLineBeforeSection), comment, then directly the [header] of the next member.
+    bool writeReflectComment(const char *text, const bool beforeSection){
+      if(beforeSection){
+        if(!_commentBeforeHeader){
+          if(_pos > 0 && _config.blankLineBeforeSection) appendChar('\n');
+          _commentBeforeHeader = true;
+        }
+      }else{
+        if(_secLen && !ensureHeader()) return false;
+      }
+      comment(text);
+      return !hasError();
     }
 
     template<typename T>
